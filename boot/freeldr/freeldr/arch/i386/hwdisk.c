@@ -373,13 +373,6 @@ DiskGetBootPath(
 
     *DeviceType = 0;
 
-    // FIXME: Do this in some drive recognition procedure!
-    if (IsPxe)
-    {
-        RtlStringCbCopyA(FrLdrBootPath, sizeof(FrLdrBootPath), "net(0)");
-        *DeviceType = NetworkPeripheral;
-    }
-    else
     /* 0x49 is our magic ramdisk drive, so try to detect it first */
     if (FrldrBootDrive == 0x49)
     {
@@ -407,17 +400,28 @@ DiskGetBootPath(
     {
         /* This is a hard disk, find the boot partition */
         ULONG BootPartition;
-        if (!DiskGetBootPartitionEntry(FrldrBootDrive, NULL, &BootPartition))
+        if (DiskGetBootPartitionEntry(FrldrBootDrive, NULL, &BootPartition))
         {
-            ERR("Failed to get boot partition entry\n");
-            return FALSE;
+            FrldrBootPartition = BootPartition;
+    
+            RtlStringCbPrintfA(FrLdrBootPath, sizeof(FrLdrBootPath),
+                               "multi(0)disk(0)rdisk(%u)partition(%lu)",
+                               FrldrBootDrive - FIRST_BIOS_DISK, FrldrBootPartition);
+            *DeviceType = DiskPeripheral;
+        } else {
+            if (!IsPxe) {
+                ERR("Failed to get boot partition entry\n");
+                return FALSE;
+            }
         }
-        FrldrBootPartition = BootPartition;
-
-        RtlStringCbPrintfA(FrLdrBootPath, sizeof(FrLdrBootPath),
-                           "multi(0)disk(0)rdisk(%u)partition(%lu)",
-                           FrldrBootDrive - FIRST_BIOS_DISK, FrldrBootPartition);
-        *DeviceType = DiskPeripheral;
+    }
+    
+    // FIXME: Do this in some drive recognition procedure!
+    // ONLY consider PXE if NOTHING else matched
+    if (*DeviceType == 0 && IsPxe)
+    {
+        RtlStringCbCopyA(FrLdrBootPath, sizeof(FrLdrBootPath), "net(0)");
+        *DeviceType = NetworkPeripheral;
     }
 
     return TRUE;
